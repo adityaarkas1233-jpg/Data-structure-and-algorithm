@@ -1,0 +1,455 @@
+#include <iostream>
+#include <string>
+#include <stack>
+#include <vector>
+#include <limits>
+using namespace std;
+
+struct Song {
+    int id;
+    string name;
+    string artist;
+    Song* prev;
+    Song* next;
+
+    Song(int i, string n, string a) {
+        id = i;
+        name = n;
+        artist = a;
+        prev = NULL;
+        next = NULL;
+    }
+};
+
+struct SongData {
+    int id;
+    string name;
+    string artist;
+};
+
+typedef vector<SongData> PlaylistState;
+
+class MusicPlaylist {
+private:
+    Song* head;
+    Song* tail;
+    Song* current;
+
+    stack<PlaylistState> undoStack;
+    stack<PlaylistState> redoStack;
+
+    Song* findSong(int id) {
+        Song* temp = head;
+
+        while (temp != NULL) {
+            if (temp->id == id)
+                return temp;
+            temp = temp->next;
+        }
+
+        return NULL;
+    }
+
+    PlaylistState getState() {
+        PlaylistState state;
+        Song* temp = head;
+
+        while (temp != NULL) {
+            SongData data;
+            data.id = temp->id;
+            data.name = temp->name;
+            data.artist = temp->artist;
+            state.push_back(data);
+            temp = temp->next;
+        }
+
+        return state;
+    }
+
+    void saveUndo() {
+        undoStack.push(getState());
+
+        // A new change clears the redo history.
+        while (!redoStack.empty())
+            redoStack.pop();
+    }
+
+    void clearPlaylist() {
+        Song* temp = head;
+
+        while (temp != NULL) {
+            Song* nextSong = temp->next;
+            delete temp;
+            temp = nextSong;
+        }
+
+        head = tail = current = NULL;
+    }
+
+    void appendSong(int id, string name, string artist) {
+        Song* newSong = new Song(id, name, artist);
+
+        if (head == NULL) {
+            head = tail = newSong;
+        } else {
+            newSong->prev = tail;
+            tail->next = newSong;
+            tail = newSong;
+        }
+
+        if (current == NULL)
+            current = newSong;
+    }
+
+    void restoreState(const PlaylistState& state) {
+        clearPlaylist();
+
+        for (size_t i = 0; i < state.size(); i++) {
+            appendSong(state[i].id,
+                       state[i].name,
+                       state[i].artist);
+        }
+    }
+
+public:
+    MusicPlaylist() {
+        head = tail = current = NULL;
+    }
+
+    ~MusicPlaylist() {
+        clearPlaylist();
+    }
+
+    void addSong() {
+        int id;
+        string name, artist;
+
+        cout << "Enter Song ID: ";
+        cin >> id;
+
+        if (findSong(id) != NULL) {
+            cout << "Song ID already exists!\n";
+            return;
+        }
+
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+
+        cout << "Enter Song Name: ";
+        getline(cin, name);
+
+        cout << "Enter Artist Name: ";
+        getline(cin, artist);
+
+        saveUndo();
+        appendSong(id, name, artist);
+
+        cout << "Song added successfully!\n";
+    }
+
+    void displayForward() {
+        if (head == NULL) {
+            cout << "Playlist is empty!\n";
+            return;
+        }
+
+        Song* temp = head;
+
+        cout << "\n--- Playlist (Forward) ---\n";
+
+        while (temp != NULL) {
+            cout << "ID: " << temp->id
+                 << " | Song: " << temp->name
+                 << " | Artist: " << temp->artist << endl;
+
+            temp = temp->next;
+        }
+    }
+
+    void displayReverse() {
+        if (tail == NULL) {
+            cout << "Playlist is empty!\n";
+            return;
+        }
+
+        Song* temp = tail;
+
+        cout << "\n--- Playlist (Reverse) ---\n";
+
+        while (temp != NULL) {
+            cout << "ID: " << temp->id
+                 << " | Song: " << temp->name
+                 << " | Artist: " << temp->artist << endl;
+
+            temp = temp->prev;
+        }
+    }
+
+    void searchSong() {
+        if (head == NULL) {
+            cout << "Playlist is empty!\n";
+            return;
+        }
+
+        int id;
+        cout << "Enter Song ID to search: ";
+        cin >> id;
+
+        Song* temp = findSong(id);
+
+        if (temp != NULL) {
+            cout << "Song found!\n";
+            cout << "ID: " << temp->id << endl;
+            cout << "Name: " << temp->name << endl;
+            cout << "Artist: " << temp->artist << endl;
+        } else {
+            cout << "Song not found!\n";
+        }
+    }
+
+    void deleteSong() {
+        int id;
+
+        cout << "Enter Song ID to delete: ";
+        cin >> id;
+
+        Song* temp = findSong(id);
+
+        if (temp == NULL) {
+            cout << "Song not found!\n";
+            return;
+        }
+
+        saveUndo();
+
+        if (temp->prev != NULL)
+            temp->prev->next = temp->next;
+        else
+            head = temp->next;
+
+        if (temp->next != NULL)
+            temp->next->prev = temp->prev;
+        else
+            tail = temp->prev;
+
+        if (current == temp)
+            current = (temp->next != NULL)
+                      ? temp->next : temp->prev;
+
+        delete temp;
+
+        cout << "Song deleted successfully!\n";
+    }
+
+    void rearrangeSong() {
+        int id, position, count = 0;
+
+        cout << "Enter Song ID to move: ";
+        cin >> id;
+
+        Song* temp = findSong(id);
+
+        if (temp == NULL) {
+            cout << "Song not found!\n";
+            return;
+        }
+
+        for (Song* p = head; p != NULL; p = p->next)
+            count++;
+
+        cout << "Enter new position (1 to "
+             << count << "): ";
+        cin >> position;
+
+        if (position < 1 || position > count) {
+            cout << "Invalid position!\n";
+            return;
+        }
+
+        int oldPosition = 1;
+
+        for (Song* p = head; p != temp; p = p->next)
+            oldPosition++;
+
+        if (oldPosition == position) {
+            cout << "Song is already at that position.\n";
+            return;
+        }
+
+        saveUndo();
+
+        // Remove the song from its current position.
+        if (temp->prev != NULL)
+            temp->prev->next = temp->next;
+        else
+            head = temp->next;
+
+        if (temp->next != NULL)
+            temp->next->prev = temp->prev;
+        else
+            tail = temp->prev;
+
+        temp->prev = temp->next = NULL;
+
+        // Insert the song at the new position.
+        if (position == 1) {
+            temp->next = head;
+
+            if (head != NULL)
+                head->prev = temp;
+            else
+                tail = temp;
+
+            head = temp;
+        } else {
+            Song* p = head;
+
+            for (int i = 1; i < position - 1; i++)
+                p = p->next;
+
+            temp->next = p->next;
+            temp->prev = p;
+
+            if (p->next != NULL)
+                p->next->prev = temp;
+            else
+                tail = temp;
+
+            p->next = temp;
+        }
+
+        cout << "Song rearranged successfully!\n";
+    }
+
+    void nextSong() {
+        if (current == NULL) {
+            cout << "Playlist is empty!\n";
+            return;
+        }
+
+        if (current->next != NULL)
+            current = current->next;
+        else {
+            cout << "Already at the last song.\n";
+            return;
+        }
+
+        cout << "Now Playing: " << current->name
+             << " - " << current->artist << endl;
+    }
+
+    void previousSong() {
+        if (current == NULL) {
+            cout << "Playlist is empty!\n";
+            return;
+        }
+
+        if (current->prev != NULL)
+            current = current->prev;
+        else {
+            cout << "Already at the first song.\n";
+            return;
+        }
+
+        cout << "Now Playing: " << current->name
+             << " - " << current->artist << endl;
+    }
+
+    void undo() {
+        if (undoStack.empty()) {
+            cout << "Nothing to undo!\n";
+            return;
+        }
+
+        redoStack.push(getState());
+
+        PlaylistState previousState = undoStack.top();
+        undoStack.pop();
+
+        restoreState(previousState);
+
+        cout << "Undo successful!\n";
+    }
+
+    void redo() {
+        if (redoStack.empty()) {
+            cout << "Nothing to redo!\n";
+            return;
+        }
+
+        undoStack.push(getState());
+
+        PlaylistState nextState = redoStack.top();
+        redoStack.pop();
+
+        restoreState(nextState);
+
+        cout << "Redo successful!\n";
+    }
+};
+
+int main() {
+    MusicPlaylist playlist;
+    int choice;
+
+    do {
+        cout << "\n===== MUSIC PLAYLIST MANAGER =====\n";
+        cout << "1. Add Song\n";
+        cout << "2. Display Playlist Forward\n";
+        cout << "3. Display Playlist Reverse\n";
+        cout << "4. Search Song\n";
+        cout << "5. Delete Song\n";
+        cout << "6. Rearrange Song\n";
+        cout << "7. Next Song\n";
+        cout << "8. Previous Song\n";
+        cout << "9. Undo\n";
+        cout << "10. Redo\n";
+        cout << "0. Exit\n";
+        cout << "Enter your choice: ";
+
+        if (!(cin >> choice)) {
+            cout << "Invalid input. Exiting program.\n";
+            break;
+        }
+
+        switch (choice) {
+            case 1:
+                playlist.addSong();
+                break;
+            case 2:
+                playlist.displayForward();
+                break;
+            case 3:
+                playlist.displayReverse();
+                break;
+            case 4:
+                playlist.searchSong();
+                break;
+            case 5:
+                playlist.deleteSong();
+                break;
+            case 6:
+                playlist.rearrangeSong();
+                break;
+            case 7:
+                playlist.nextSong();
+                break;
+      break;
+            case 9:
+           case 8:
+                playlist.previousSong();
+                           playlist.undo();
+                break;
+            case 10:
+                playlist.redo();
+                break;
+            case 0:
+                cout << "Exiting Music Playlist Manager.\n";
+                break;
+            default:
+                cout << "Invalid choice! Try again.\n";
+        }
+
+    } while (choice != 0);
+
+    return 0;
+}
